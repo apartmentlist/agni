@@ -48,59 +48,35 @@ module Messenger
   class Messenger
     include LogMixin
 
-    attr_reader :connection, :channel, :exchange
+    attr_reader :connection
 
-    # Unless you know what you're doing, don't call this.  Using
-    # Rails.application.messenger instead.
+    # Creates a Messenger, connecting to the supplied URL.
+    #
+    # @param amqp_url [String] the url to the AMQP instance this
+    #   Messenger should connect to.  Should begin with 'amqp://'.
     def initialize(amqp_url)
       if amqp_url.nil? || amqp_url.empty?
         raise ArgumentError, "AMQP url is required to create a Messenger"
       end
       self.configure_logs
-      # It does not appear that, for any given dyno, EventMachine will
-      # be running, even though our app is based on Thin (since EM is
-      # single threaded).  Accordingly, we neet to start it if needed.
+      # Start EventMachine if needed
       unless EventMachine.reactor_running?
         @em_thread = Thread.new { EventMachine.run }
       end
 
-      # Ensure the EventMachine has really started before we attempt
-      # to connect.
+      # Block until EventMachine has started
       info("Waiting for EventMachine to start")
       while not EventMachine.reactor_running?
         sleep(0.1)
       end
       info("EventMachine start detected")
 
-      # Log cases in which we're unexpectedly disconnected from the server
-      connection_options = {
-        auto_recovery: true,
-        on_tcp_connection_failure: ->{ warning("TCP connection failure detected") }
-      }
-
-      unless @connection = AMQP.connect(amqp_url, connection_options)
+      unless @connection = AMQP.connect(amqp_url, DEFAULT_CONNECTION_OPTS)
         raise MessengerError, "Unable to connect to AMQP instance at #{amqp_url}"
       end
 
-      channel_options = {
-        auto_recovery: true,
-        prefetch: MESSENGER_PREFETCH_COUNT,
-      }
-
-      unless @channel = AMQP::Channel.new(@connection, channel_options)
-        raise MessengerError,
-          "Unable to obtain a channel from AMQP instance at #{amqp_url}"
-      end
-
-      # Get a handle to the default exchange that we'll use for all
-      # messages. The default exchange automatically binds messages
-      # with a given routing key to a queue with the same name,
-      # eliminating the need to create specific direct bindings for
-      # each queue.
-      @exchange = @channel.default_exchange
-
-      # A hash of queue names to Messenger::Queue objects to keep
-      # track of what queues we have access to.
+      # A hash which maps queue names to Messenger::Queue objects.
+      # Tracks what queues we have access to.
       @queues = {}
     end
 
@@ -114,15 +90,14 @@ module Messenger
     # @raise MessengerError if the queue has already been created with
     #        an incompatible set of options.
     def get_queue(queue_name, options={})
-      # Intermediate value allows initializer for Messenger to throw
-      # exceptions before we mutate the queues variable.
-      unless queue = @queues[queue_name]
+      @queues.fetch(queue_name) do |queue_name|
         queue = Queue.new(queue_name, self, options)
         @queues[queue_name] = queue
       end
-      queue
     end
 
+    # @return [TrueClass, FalseClass] whether or not a queue with the
+    #   given name is known to this Messenger instance.
     def queue?(queue_name)
       @queues.key?(queue_name)
     end
@@ -197,6 +172,7 @@ module Messenger
     #         messages when they have been processed.  Defaults to
     #         +true+.
     # @yield handler [metadata, payload] a block that handles the incoming message
+    # @return [Messenger::Queue] the queue that has been subscribed
     def subscribe(queue_name, options={}, &handler)
       if queue_name.nil? || queue_name.empty?
         raise ArgumentError, 'Queue name must be present when subscribing'
