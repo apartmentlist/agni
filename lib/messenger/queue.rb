@@ -33,24 +33,23 @@ module Messenger
       @memory_queue = Containers::MinHeap.new
     end
 
-    def subscribe(options={}, handler)
+    def subscribe(handler, options={})
+      if subscribed?
+        raise MessengerError, 'Queue #{queue_name} is already subscribed'
+      end
       ack = options[:ack].nil? ? true : options[:ack]
       handle_func = lambda do
         metadata, payload = pop
         handler[metadata, payload] if handler
-        metadata.ack if ack # TODO: can this be run off the reactor thread?
-      end
-      # We need this callback if the message can't be acked on a defer
-      # thread
-      ack_func = lambda do |metadata|
         metadata.ack if ack
       end
       @queues.each do |q|
         queue = q[:queue]
         priority = q[:priority]
         queue.subscribe(:ack => true) do |metadata, payload|
-          @memory_queue.push(priority, [metadata, payload])
-          #EventMachine.defer(handle_func, ack_func)
+          @queue_mutex.synchronize do
+            @memory_queue.push(priority, [metadata, payload])
+          end
           EventMachine.defer(handle_func)
         end
       end
@@ -59,15 +58,16 @@ module Messenger
 
     def unsubscribe
       unless subscribed?
-        n        raise MessengerError, 'Queue #{queue_name} is not subscribed'
+        raise MessengerError, 'Queue #{queue_name} is not subscribed'
       end
       @queues.each do |q|
         q[:queue].unsubscribe
       end
     end
 
+    # @return [True] iff every AMQP queue is +subscribed?
     def subscribed?
-      @queues.map{|q| q[:queue]}.all?(&:subscribed?)
+      @queues.map{|q| q[:queue].default_consumer}.all?{|c| c.subscribed? if c}
     end
 
     # Publishes a payload to this queue.
@@ -83,38 +83,23 @@ module Messenger
                                            merge(:routing_key => queue_name))
     end
 
-    def message_count
-      @queues.map{|q| q[:queue]}.map do |queue|
-        msg_count = 0
-        queue.status {|num_msgs, num_consumers| msg_count = num_msgs }
-        msg_count
-      end.reduce(&:+)
-    end
-
-    # Returns the number of consumers of this queue.
-    # @precondition This method assumes that the underlying AMQP
-    #   queues will only be subscribed to by consumers using Messenger.
-    # @return [FixNum] the number of consumers on this queue
-    def consumer_count
-      c_count = 0
-      @queues.first[:queue].status {|num_msgs, num_consumers| c_count = consumer_count }
-      c_count
-    end
-
-    private
-
     # Strategy for mapping a base_name and a priority to an AMQP queue
     # name
     def create_queue_name(base_name, priority)
       "#{base_name}.#{priority}"
     end
 
-    # Utility method to create queue hashes.
+    private
+
+    # Internal use utility method to create queue hashes.  No checking
+    # is performed to ensure that the queue does not already exist,
+    # for example.  Its only use right now is during initialization of
+    # the Messenger::Queue class.
     def create_queue(messenger, priority, options)
       name = create_queue_name(@logical_queue_name, priority)
       unless channel = AMQP::Channel.new(@connection,
                                          DEFAULT_CHANNEL_OPTS.
-                                         merge({prefetch: 50}))
+                                         merge({prefetch: DEFAULT_PREFETCH}))
         raise MessengerError,
         "Unable to obtain a channel from AMQP instance at #{amqp_url}"
       end
@@ -140,9 +125,9 @@ module Messenger
     # thread-safe manner.
     def pop
       val  = []
-      @queue_mutex.synchronize {
+      @queue_mutex.synchronize do
         val = @memory_queue.pop
-      }
+      end
       val
     end
 

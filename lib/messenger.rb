@@ -4,6 +4,7 @@ require 'algorithms'
 require 'messenger/version'
 require 'messenger/queue'
 require 'messenger/messenger'
+require 'messenger/messenger_error'
 
 module Messenger
   # Enforce durability-by-default at the queue and message level
@@ -23,4 +24,5 @@ module Messenger
   PRIORITY_LEVELS = (0..9).to_a.freeze
   # To allow room above and below the default, we put it in the middle
   DEFAULT_PRIORITY = 4
+  DEFAULT_PREFETCH = 50
 end

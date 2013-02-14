@@ -4,15 +4,13 @@ require 'spec_helper'
 
 describe Messenger::Messenger do
   let (:amqp_url) { "amqp://localhost" }
-  # A mocked up messenger object, with mocked AMQP methods
+  # A messenger object using mocked AMQP methods
   let (:connection) { mock('connection') }
   let (:channel) { mock('channel') }
   let (:exchange) { mock('exchange') }
   let (:messenger) {
     EventMachine.stubs(:reactor_running?).returns(true)
-    channel.stubs(default_exchange: exchange)
     AMQP.expects(:connect).with(amqp_url, is_a(Hash)).returns(connection)
-    AMQP::Channel.expects(:new).with(is_a(Object), is_a(Hash)).returns(channel)
     Messenger::Messenger.new(amqp_url)
   }
 
@@ -125,35 +123,6 @@ describe Messenger::Messenger do
         messenger.expects(:get_queue).with(queue_name).returns(nil)
         messenger.unsubscribe(queue_name)
       end
-
-#      describe 'message acking' do
-#        before(:each) do
-#          channel.queues.twice {{queue_name => queue}}
-#          mock(queue).subscribed? { false }
-#          mock(queue).subscribe(is_a(Hash)) { |*args| args[1] }
-#        end
-#
-#        let(:metadata) { mock! }
-#
-#        it 'should occur if no option is given' do
-#          mock(metadata).ack
-#          code = messenger.subscribe(queue_name)
-#          code[metadata, ""]
-#        end
-#
-#        it 'should occur if ack is set to true' do
-#          mock(metadata).ack
-#          code = messenger.subscribe(queue_name, ack: true)
-#          code[metadata, ""]
-#        end
-#
-#        it 'should not occur if ack is set to false in options' do
-#          dont_allow(metadata).ack
-#          code = messenger.subscribe(queue_name, ack: false)
-#          code[metadata, ""]
-#        end
-#
-#      end
 
     end
   end
