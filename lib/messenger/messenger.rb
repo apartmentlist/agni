@@ -21,7 +21,7 @@ module Messenger
   # Another guiding principle is that messages should be durable; that
   # is, they should survive the restart of the AMQP infrastructure.
   #
-  # One example use case of a Messenger is to deliver data between
+  # Onne example use case of a Messenger is to deliver data between
   # stages of a backend application (for example, data retrieval and
   # data processing).  Each Ruby VM that wants to participate can
   # instantiate a Messenger with the same AMQP url and all
@@ -46,14 +46,9 @@ module Messenger
   # simplest useful API for messaging.  That API is subject to change
   # to the extent it stays in line with the original design goals.
   class Messenger
-    include ::LogMixin
+    include LogMixin
 
-    # Enforce durability-by-default at the queue and message level
-    DEFAULT_QUEUE_OPTS = {durable: true}.freeze
-    DEFAULT_MESSAGE_OPTS = {persistent: true}.freeze
-    # As we move towards a priority based system, expect this be
-    # adjusted for each priority level
-    MESSENGER_PREFETCH_COUNT = 50
+    attr_reader :connection, :channel, :exchange
 
     # Unless you know what you're doing, don't call this.  Using
     # Rails.application.messenger instead.
@@ -61,7 +56,6 @@ module Messenger
       if amqp_url.nil? || amqp_url.empty?
         raise ArgumentError, "AMQP url is required to create a Messenger"
       end
-      # Setup logging
       self.configure_logs
       # It does not appear that, for any given dyno, EventMachine will
       # be running, even though our app is based on Thin (since EM is
@@ -83,8 +77,8 @@ module Messenger
         auto_recovery: true,
         on_tcp_connection_failure: ->{ warning("TCP connection failure detected") }
       }
-      @connection = AMQP.connect(amqp_url, connection_options)
-      unless @connection
+
+      unless @connection = AMQP.connect(amqp_url, connection_options)
         raise MessengerError, "Unable to connect to AMQP instance at #{amqp_url}"
       end
 
@@ -92,9 +86,8 @@ module Messenger
         auto_recovery: true,
         prefetch: MESSENGER_PREFETCH_COUNT,
       }
-      @channel = AMQP::Channel.new(@connection, channel_options)
 
-      unless @channel
+      unless @channel = AMQP::Channel.new(@connection, channel_options)
         raise MessengerError,
           "Unable to obtain a channel from AMQP instance at #{amqp_url}"
       end
@@ -105,69 +98,45 @@ module Messenger
       # eliminating the need to create specific direct bindings for
       # each queue.
       @exchange = @channel.default_exchange
+
+      # A hash of queue names to Messenger::Queue objects to keep
+      # track of what queues we have access to.
+      @queues = {}
     end
 
-    # This is not as reliable as it might seem; unless the queue was
-    # created or accessed already with this instance of Messenger, it
-    # will fail to pass this check (that is, it will be reported as
-    # not existing and this method will return false).
-    def queue_exists?(queue_name)
-      @channel.queues.key?(queue_name)
-    end
-
-    # Creates a queue with the given options.  If no options are
+    # Gets a queue with the given options.  If no options are
     # provided, a default set of options will be used that makes the
     # queue save its messages to disk so that they won't be lost if
     # the AMQP service is restarted.
     #
-    # @return The queue that was created
+    # @return [Messenger::Queue] the queue with the provided name
     # @raise ArgumentError if the queue name is not provided
     # @raise MessengerError if the queue has already been created with
     #        an incompatible set of options.
-    def create_queue(name, options={})
-      if name.nil? || name.empty?
-        raise ArgumentError, 'Queue name must be present when creating a queue'
+    def get_queue(queue_name, options={})
+      # Intermediate value allows initializer for Messenger to throw
+      # exceptions before we mutate the queues variable.
+      unless queue = @queues[queue_name]
+        queue = Queue.new(queue_name, self, options)
+        @queues[queue_name] = queue
       end
-      begin
-        @channel.queue(name, DEFAULT_QUEUE_OPTS.merge(options))
-      rescue AMQP::IncompatibleOptionsError
-        raise MessengerError,
-          'Queue with name #{name}, has already been created with different options!'
-      end
+      queue
     end
 
-    # This method provides a safe way to create a queue only if it
-    # doesn't already exist.
+    def queue?(queue_name)
+      @queues.key?(queue_name)
+    end
+
+    # Get and return the number of messages in a given queue.
     #
-    # @param name [String] the name of the queue that should be
-    #   created
-    # @return this method is intended to operate by side-effect, so
-    #   the return value is undefined.
-    def create_queue_if_non_existent(name, options={})
-      begin
-        create_queue(name, options) unless queue_exists?(name)
-      rescue MessengerError
-        # This can get thrown in the case of a race condition, (since
-        # the AMQP server is a shared resource and there is a gap
-        # between the check and the creation) and can be safely
-        # ignored.
-      end
-    end
-
     # @param queue_name [String] the name of the queue for which the
     #   the message count should be fetched.
     # @return [Fixnum] the number of messages in the queue with
-    #   provided queue name.  If the queue is not yet created, it will
-    #   be created when this method is called.
+    #   provided queue name.  If the queue is not yet created, the
+    #   method will return +nil+.
     # @raise ArgumentError if the queue_name is not supplied
     def queue_messages(queue_name)
-      if queue_name.nil? || queue_name.empty?
-        raise ArgumentError, 'Queue name must be present to query it for messages'
-      end
-      queue = create_queue_if_non_existent(queue_name)
-      queue.status do |num_msgs, num_consumers|
-        num_msgs
-      end
+      get_queue(queue_name).message_count if queue?(queue_name)
     end
 
     # @param queue_name [String] the name of the queue for which the
@@ -177,25 +146,30 @@ module Messenger
     #   be created when this method is called.
     # @raise ArgumentError if the queue_name is not supplied
     def queue_consumers(queue_name)
-      if queue_name.nil? || queue_name.empty?
-        raise ArgumentError, 'Queue name must be present to query it for consumers'
-      end
-      queue = create_queue_if_non_existent(queue_name)
-      queue.status do |num_msgs, num_consumers|
-        num_consumers
-      end
+      get_queue(queue_name).consumer_count if queue?(queue_name)
     end
 
-    def publish(msg, queue_name, options={})
-      create_queue_if_non_existent(queue_name)
-      @exchange.publish(msg, DEFAULT_MESSAGE_OPTS.merge(options).
-                        merge(:routing_key => queue_name))
+    # Convenience method that publishes a message to the given queue
+    # name, with an optional priority.
+    #
+    # @param msg [String] the message to enqueue
+    # @param queue_name [String] the name of the queue to publish to
+    # @param priority [FixNum] optional -- the priority of the message
+    #   0(high) - 9(low)
+    # @param options [Hash] optional -- options that will be passed to
+    #   the underlying AMQP queue during publishing.
+    def publish(msg, queue_name, priority=DEFAULT_PRIORITY, options={})
+      get_queue(queue_name).publish(msg, priority, options)
     end
 
-    # Accepts a block that it will yield to for each incoming message.
-    # The block passed in to this method should accept two arguments:
-    # the metadata of the message being received, as well as the
-    # payload of the message.
+    # @note The block passed to this method must not block, since it
+    #   will be run in a single-threaded context.
+    #
+    # Convenience method that takes a queue name (creating the queue
+    # if necessary) and accepts a block that it will yield to for each
+    # incoming message.  The block passed in to this method should
+    # accept two arguments: the metadata of the message being
+    # received, as well as the payload of the message.
     #
     # This method is non-blocking, and if at any time the Messenger
     # should no longer yield to the provided block when new messages
@@ -222,21 +196,16 @@ module Messenger
     #         set to +false+, the block passed to this method must ack
     #         messages when they have been processed.  Defaults to
     #         +true+.
-    # @yield [metadata, payload] a block that handles the incoming message
-    def subscribe(queue_name, options={})
+    # @yield handler [metadata, payload] a block that handles the incoming message
+    def subscribe(queue_name, options={}, &handler)
       if queue_name.nil? || queue_name.empty?
-        raise ArgumentError, 'Queue name must be present when receiving'
+        raise ArgumentError, 'Queue name must be present when subscribing'
       end
-      create_queue_if_non_existent(queue_name)
-      queue = @channel.queues[queue_name]
-      ack = options[:ack].nil? ? true : options[:ack]
+      queue = get_queue(queue_name)
       if queue.subscribed?
         raise MessengerError, "Queue #{queue_name} is already subscribed!"
       end
-      queue.subscribe(:ack => true) do |metadata, payload|
-        yield(metadata, payload) if block_given?
-        metadata.ack if ack
-      end
+      queue.subscribe(options, handler)
     end
 
     # Unsubscribe this messenger from the queue associated with the
@@ -246,20 +215,11 @@ module Messenger
     # @raise MessengerError if the queue does not exist
     def unsubscribe(queue_name)
       if queue_name.nil? || queue_name.empty?
-        raise ArgumentError, 'Cannot unsubscribe from queue without a name'
+        raise ArgumentError, 'Queue name must be present when unsubscribing'
       end
-      unless queue_exists?(queue_name)
-        raise MessengerError,
-          'Cannot unsubscribe from non-existent queue #{queue_name}'
+      if queue = get_queue(queue_name)
+        queue.unsubscribe
       end
-
-      queue = @channel.queues[queue_name]
-
-      unless queue.subscribed?
-        raise MessengerError, 'Queue #{queue_name} is not subscribed'
-      end
-
-      queue.unsubscribe
     end
 
     # This method allows a client of the messenger to block on the
@@ -279,7 +239,8 @@ module Messenger
 
   # Error class used to denote error conditions specific to the
   # messenger infrastructure, and not those due to, for example,
-  # missing arguements.
+  # missing arguments.
   class MessengerError < StandardError
   end
+
 end

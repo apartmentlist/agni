@@ -20,12 +20,10 @@ Gem::Specification.new do |gem|
   gem.add_dependency('amqp')
   gem.add_dependency('rabbitmq-service-util')
   gem.add_dependency('algorithms')
-
-  # TODO: add log_mixin here when it becomes a gem, delete from Gemfile
-  # gem.add_dependency('log_mixin')
+  gem.add_dependency('log_mixin')
 
   gem.add_development_dependency('rspec')
   gem.add_development_dependency('pry')
-  gem.add_development_dependency('rr')
-  #gem.add_development_dependency('mocha')
+  #gem.add_development_dependency('rr')
+  gem.add_development_dependency('mocha')
 end
