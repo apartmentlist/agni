@@ -181,7 +181,7 @@ module Messenger
       if queue.subscribed?
         raise MessengerError, "Queue #{queue_name} is already subscribed!"
       end
-      queue.subscribe(options, handler)
+      queue.subscribe(handler, options)
     end
 
     # Unsubscribe this messenger from the queue associated with the

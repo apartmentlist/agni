@@ -25,7 +25,7 @@ The Messenger is designed for a simple, but very useful, configuration
 of AMQP that is designed to allow 1:1, 1:n and m:n configurations for
 message passing between Ruby VMs running across many machines.
 
-One guiding principle of this class is that each message will only
+One guiding principle of this queue is that each message will only
 ever be consumed once.  There are use cases where that behavior is not
 desirable, and for those use cases Messenger should be specialized or
 another approach should be used altogether.
