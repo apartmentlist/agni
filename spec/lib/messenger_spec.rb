@@ -108,7 +108,7 @@ describe Messenger::Messenger do
 
       it 'should should subscribe to the queue associated with the queue name provided' do
         queue.expects(:subscribed?).returns(false)
-        queue.expects(:subscribe).with(is_a(Hash), is_a(Proc))
+        queue.expects(:subscribe).with(is_a(Proc), is_a(Hash))
         messenger.expects(:get_queue).with(queue_name).returns(queue)
         messenger.subscribe(queue_name) { |m,p| puts 'ohai'}
       end
