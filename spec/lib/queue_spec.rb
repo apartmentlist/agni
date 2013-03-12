@@ -5,9 +5,11 @@ require 'spec_helper'
 describe Messenger::Queue do
 
   let (:channel) { mock('channel') }
+  let (:connection) { mock('connection') }
   let (:messenger) do
     mock('messenger').tap do |m|
       m.stubs(:channel).returns(channel)
+      m.stubs(:connection).returns(connection)
     end
   end
   let (:channel) { mock('channel') }

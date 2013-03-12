@@ -1,5 +1,4 @@
 require 'messenger'
-require 'pry'
 require 'spec_helper'
 
 describe Messenger::Messenger do

@@ -66,9 +66,7 @@ module Messenger
 
       # Block until EventMachine has started
       info("Waiting for EventMachine to start")
-      while not EventMachine.reactor_running?
-        sleep(0.1)
-      end
+      spin_until { EventMachine.reactor_running? }
       info("EventMachine start detected")
 
       unless @connection = AMQP.connect(amqp_url, DEFAULT_CONNECTION_OPTS)
@@ -182,6 +180,7 @@ module Messenger
         raise MessengerError, "Queue #{queue_name} is already subscribed!"
       end
       queue.subscribe(handler, options)
+      # spin_until { queue.subscribed?  }
     end
 
     # Unsubscribe this messenger from the queue associated with the
@@ -209,6 +208,14 @@ module Messenger
     # otherwise.
     def connected?
       return @connection.connected?
+    end
+
+    private
+
+   def spin_until
+      while not yield
+        sleep(0.1)
+      end
     end
 
   end

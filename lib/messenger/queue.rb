@@ -97,7 +97,7 @@ module Messenger
     # the Messenger::Queue class.
     def create_queue(messenger, priority, options)
       name = create_queue_name(@logical_queue_name, priority)
-      unless channel = AMQP::Channel.new(@connection,
+      unless channel = AMQP::Channel.new(messenger.connection,
                                          DEFAULT_CHANNEL_OPTS.
                                          merge({prefetch: DEFAULT_PREFETCH}))
         raise MessengerError,
