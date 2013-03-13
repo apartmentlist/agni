@@ -123,16 +123,28 @@ module Messenger
     end
 
     # Convenience method that publishes a message to the given queue
-    # name, with an optional priority.
+    # name.
+    #
+    # One of the main uses of the options hash is to specify a message
+    # priority between 0 and 9:
+    #
+    #    messenger.publish("Hello World", "test_queue", priority: 7)
+    #
+    # But the default priority is 4, so this would be published with a
+    # priority of 4:
+    #
+    #    messenger.publish("Hello World", "test_queue")
     #
     # @param msg [String] the message to enqueue
     # @param queue_name [String] the name of the queue to publish to
-    # @param priority [FixNum] optional -- the priority of the message
-    #   0(high) - 9(low)
     # @param options [Hash] optional -- options that will be passed to
     #   the underlying AMQP queue during publishing.
-    def publish(msg, queue_name, priority=DEFAULT_PRIORITY, options={})
-      get_queue(queue_name).publish(msg, priority, options)
+    # @option priority [FixNum] the priority of the message
+    #   0(high) - 9(low)
+    def publish(msg, queue_name, options={})
+      sym_options = options.deep_symbolize_keys
+      priority = sym_options.delete(:priority) || DEFAULT_PRIORITY
+      get_queue(queue_name).publish(msg, priority, sym_options)
     end
 
     # @note The block passed to this method must not block, since it
