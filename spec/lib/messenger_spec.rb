@@ -21,6 +21,19 @@ describe Messenger::Messenger do
     it 'should throw an exception given a blank url' do
       lambda{Messenger::Messenger.new('')}.should raise_error(ArgumentError)
     end
+
+    it 'should set the EventMachine threadpool size from the environment' do
+      ENV['EM_THREADPOOL_SIZE'] = '13'
+      EventMachine.expects(:threadpool_size=).with(13)
+      m = messenger
+      ENV.delete('EM_THREADPOOL_SIZE')
+    end
+
+    it 'should use a default threadpool size if the env var is not set' do
+      ENV['EM_THREADPOOL_SIZE'].should == nil
+      EventMachine.expects(:threadpool_size=).with(Messenger::DEFAULT_THREADPOOL_SIZE)
+      m = messenger
+    end
   end
 
   describe 'get_queue' do
@@ -78,7 +91,7 @@ describe Messenger::Messenger do
         queue = mock('queue')
         queue.expects(:publish).with(message, Messenger::DEFAULT_PRIORITY, test_headers)
         messenger.expects(:get_queue).with(queue_name).returns(queue)
-        messenger.publish(message, queue_name, priority=Messenger::DEFAULT_PRIORITY, options=test_headers)
+        messenger.publish(message, queue_name, options=test_headers)
       end
 
     end
