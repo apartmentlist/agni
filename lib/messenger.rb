@@ -25,4 +25,5 @@ module Messenger
   # To allow room above and below the default, we put it in the middle
   DEFAULT_PRIORITY = 4
   DEFAULT_PREFETCH = 50
+  DEFAULT_THREADPOOL_SIZE = 5
 end

@@ -69,6 +69,8 @@ module Messenger
       spin_until { EventMachine.reactor_running? }
       info("EventMachine start detected")
 
+      EventMachine.threadpool_size = ENV.fetch('EM_THREADPOOL_SIZE', DEFAULT_THREADPOOL_SIZE).to_i
+
       unless @connection = AMQP.connect(amqp_url, DEFAULT_CONNECTION_OPTS)
         raise MessengerError, "Unable to connect to AMQP instance at #{amqp_url}"
       end
@@ -138,13 +140,13 @@ module Messenger
     # @param msg [String] the message to enqueue
     # @param queue_name [String] the name of the queue to publish to
     # @param options [Hash] optional -- options that will be passed to
-    #   the underlying AMQP queue during publishing.
-    # @option priority [FixNum] the priority of the message
+    #   the underlying AMQP queue during publishing.  All keys should
+    #   be symbols.
+    # @option :priority [FixNum] the priority of the message
     #   0(high) - 9(low)
     def publish(msg, queue_name, options={})
-      sym_options = options.deep_symbolize_keys
-      priority = sym_options.delete(:priority) || DEFAULT_PRIORITY
-      get_queue(queue_name).publish(msg, priority, sym_options)
+      priority = options.delete(:priority) || DEFAULT_PRIORITY
+      get_queue(queue_name).publish(msg, priority, options)
     end
 
     # @note The block passed to this method must not block, since it
