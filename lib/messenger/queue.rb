@@ -33,6 +33,14 @@ module Messenger
       @memory_queue = Containers::MinHeap.new
     end
 
+    # Subscribes to this queue, handling each incoming message with
+    # the provided +handler+.
+    # @param handler [Proc] accepts two arguments:
+    #   metadata [Hash] a hash of attributes as it is provided by the
+    #   underlying AMQP implementation.
+    #   payload [String] the message itself, as was provided by the
+    #   publisher
+    #   The return value from the handler will be discarded.
     def subscribe(handler, options={})
       if subscribed?
         raise MessengerError, 'Queue #{queue_name} is already subscribed'
@@ -41,7 +49,7 @@ module Messenger
       handle_func = lambda do
         metadata, payload = pop
         handler[metadata, payload] if handler
-        metadata.ack if ack
+        EventMachine.next_tick{ metadata.ack } if ack
       end
       @queues.each do |q|
         queue = q[:queue]
@@ -50,7 +58,7 @@ module Messenger
           @queue_mutex.synchronize do
             @memory_queue.push(priority, [metadata, payload])
           end
-          EventMachine.defer(handle_func)
+          EventMachine.next_tick { EventMachine.defer(handle_func) }
         end
       end
       self
@@ -65,12 +73,13 @@ module Messenger
       end
     end
 
-    # @return [True] iff every AMQP queue is +subscribed?
+    # @return [True] iff every AMQP queue is +subscribed+?
     def subscribed?
       @queues.map{|q| q[:queue].default_consumer}.all?{|c| c.subscribed? if c}
     end
 
     # Publishes a payload to this queue.
+    #
     # @param payload [String] the payload of the message to publish
     # @param priority [FixNum] must be one between 0 and 9, inclusive.
     # @param options [Hash]
@@ -83,8 +92,14 @@ module Messenger
                                            merge(:routing_key => queue_name))
     end
 
-    # Strategy for mapping a base_name and a priority to an AMQP queue
-    # name
+    # Given a base name and a priority, creates a queue name suitable
+    # for use in naming an underlying AMQP queue.
+    #
+    # @param base_name [String] the base name of the queue.  This is
+    #   typcially just the queue name used when creating this
+    #   +Messenger::Queue+ object.
+    # @param priority [String] valid priorities are in the range 0
+    #   through 9 inclusive.
     def create_queue_name(base_name, priority)
       "#{base_name}.#{priority}"
     end
@@ -109,6 +124,7 @@ module Messenger
       # specific direct bindings for each queue.
       queue = channel.queue(name, DEFAULT_QUEUE_OPTS.
                             merge(options))
+
       exchange = channel.default_exchange
       # Each 'queue' in the queue array is a hash.  Here's how each
       # hash is laid out:
@@ -122,9 +138,10 @@ module Messenger
     end
 
     # Removes and returns an item from the priority queue in a
-    # thread-safe manner.
+    # thread-safe manner.  Thread safety reasoning: all calls to
+    # shared queue are locked by a single mutex.
     def pop
-      val  = []
+      val = []
       @queue_mutex.synchronize do
         val = @memory_queue.pop
       end
