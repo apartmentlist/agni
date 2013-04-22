@@ -1,25 +1,25 @@
-require 'messenger'
+require 'agni'
 require 'spec_helper'
 
-describe Messenger::Messenger do
+describe Agni::Messenger do
   let (:amqp_url) { "amqp://localhost" }
-  # A messenger object using mocked AMQP methods
+  # An Agni object using mocked AMQP methods
   let (:connection) { mock('connection') }
   let (:channel) { mock('channel') }
   let (:exchange) { mock('exchange') }
   let (:messenger) {
     EventMachine.stubs(:reactor_running?).returns(true)
     AMQP.expects(:connect).with(amqp_url, is_a(Hash)).returns(connection)
-    Messenger::Messenger.new(amqp_url)
+    Agni::Messenger.new(amqp_url)
   }
 
   describe 'construction' do
     it 'should create a connection, channel and exchange on instantiation' do
-      messenger.class.should == Messenger::Messenger
+      messenger.class.should == Agni::Messenger
     end
 
     it 'should throw an exception given a blank url' do
-      lambda{Messenger::Messenger.new('')}.should raise_error(ArgumentError)
+      lambda{Agni::Messenger.new('')}.should raise_error(ArgumentError)
     end
 
     it 'should set the EventMachine threadpool size from the environment' do
@@ -31,7 +31,7 @@ describe Messenger::Messenger do
 
     it 'should use a default threadpool size if the env var is not set' do
       ENV['EM_THREADPOOL_SIZE'].should == nil
-      EventMachine.expects(:threadpool_size=).with(Messenger::DEFAULT_THREADPOOL_SIZE)
+      EventMachine.expects(:threadpool_size=).with(Agni::DEFAULT_THREADPOOL_SIZE)
       m = messenger
     end
   end
@@ -44,8 +44,8 @@ describe Messenger::Messenger do
 
     it 'should create the queue on the channel' do
       queue_name = 'test_queue'
-      Messenger::Queue.stubs(:new).with(queue_name,
-                                        is_a(Messenger::Messenger),
+      Agni::Queue.stubs(:new).with(queue_name,
+                                        is_a(Agni::Messenger),
                                         {})
       messenger.get_queue(queue_name)
     end
@@ -54,14 +54,14 @@ describe Messenger::Messenger do
       queue_name = "test_queue"
       queues = messenger.instance_variable_get(:@queues)
       queues[queue_name] = mock
-      Messenger::Queue.expects(:new).never
+      Agni::Queue.expects(:new).never
       messenger.get_queue(queue_name)
     end
 
     it "should create the queue if it doesn't exist" do
       queue_name = 'test_queue'
-      Messenger::Queue.expects(:new).with(queue_name,
-                                        is_a(Messenger::Messenger),
+      Agni::Queue.expects(:new).with(queue_name,
+                                        is_a(Agni::Messenger),
                                         {})
       messenger.get_queue(queue_name)
     end
@@ -81,7 +81,7 @@ describe Messenger::Messenger do
       it 'should create a queue and publish to it' do
         queue_name = 'test_queue'
         queue = mock('queue')
-        queue.expects(:publish).with(message, Messenger::DEFAULT_PRIORITY, {})
+        queue.expects(:publish).with(message, Agni::DEFAULT_PRIORITY, {})
         messenger.expects(:get_queue).with(queue_name).returns(queue)
         messenger.publish(message, queue_name)
       end
@@ -89,7 +89,7 @@ describe Messenger::Messenger do
       it 'should pass custom headers to queue object' do
         test_headers = {:headers => {:operation => "TEST_OPERATION"}}
         queue = mock('queue')
-        queue.expects(:publish).with(message, Messenger::DEFAULT_PRIORITY, test_headers)
+        queue.expects(:publish).with(message, Agni::DEFAULT_PRIORITY, test_headers)
         messenger.expects(:get_queue).with(queue_name).returns(queue)
         messenger.publish(message, queue_name, options=test_headers)
       end

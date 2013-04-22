@@ -1,50 +1,4 @@
-module Messenger
-  # A Messenger is a wrapper around the Ruby AMQP gem that provides a
-  # very simple API for publishing and subscribing to messages.
-  #
-  # You'll need two things to make use of a Messenger:
-  #  - The URL to an AMQP instance
-  #  - The name of a queue that you'll be writing to and/or reading from
-  #
-  # That's it!
-  #
-  # The Messenger is designed for a simple, but very useful,
-  # configuration of AMQP that is designed to allow 1:1, 1:n and m:n
-  # configurations for message passing between Ruby VMs running across
-  # many machines.
-  #
-  # One guiding principle of this class is that each message will only
-  # ever be consumed once.  There are use cases where that behavior is
-  # not desirable, and for those use cases this class should be
-  # specialized or another class should be used altogether.
-  #
-  # Another guiding principle is that messages should be durable; that
-  # is, they should survive the restart of the AMQP infrastructure.
-  #
-  # Onne example use case of a Messenger is to deliver data between
-  # stages of a backend application (for example, data retrieval and
-  # data processing).  Each Ruby VM that wants to participate can
-  # instantiate a Messenger with the same AMQP url and all
-  # publish/subscribe to the same queue name.
-  #
-  # Messenger could also conceivably be used to push messages onto
-  # queues that represent units of work that need to be performed,
-  # allowing for an arbitary number of requestors and workers to
-  # broker work via a single queue.
-  #
-  # Another use case would utilize Messenger to create a scalable,
-  # asynchronous messaging architecture, allowing many components
-  # spanning a dozen services to communicate exclusively via various
-  # Messenger queues to schedule work, report status, update data, and
-  # collect metrics.  Messenger should, even in its current humble
-  # state, support such a use case.
-  #
-  # If you know a lot about AMQP, you'll notice that the use cases for
-  # this class remove the notion of channels, consumers, exchanges,
-  # bindings, routes, route keys and other primitives used by AMQP.
-  # This is intentional; the goal of Messenger is to provide the
-  # simplest useful API for messaging.  That API is subject to change
-  # to the extent it stays in line with the original design goals.
+module Agni
   class Messenger
     include LogMixin
 
@@ -72,10 +26,10 @@ module Messenger
       EventMachine.threadpool_size = ENV.fetch('EM_THREADPOOL_SIZE', DEFAULT_THREADPOOL_SIZE).to_i
 
       unless @connection = AMQP.connect(amqp_url, DEFAULT_CONNECTION_OPTS)
-        raise MessengerError, "Unable to connect to AMQP instance at #{amqp_url}"
+        raise AgniError, "Unable to connect to AMQP instance at #{amqp_url}"
       end
 
-      # A hash which maps queue names to Messenger::Queue objects.
+      # A hash which maps queue names to Agni::Queue objects.
       # Tracks what queues we have access to.
       @queues = {}
     end
@@ -85,9 +39,9 @@ module Messenger
     # queue save its messages to disk so that they won't be lost if
     # the AMQP service is restarted.
     #
-    # @return [Messenger::Queue] the queue with the provided name
+    # @return [Agni::Queue] the queue with the provided name
     # @raise ArgumentError if the queue name is not provided
-    # @raise MessengerError if the queue has already been created with
+    # @raise AgniError if the queue has already been created with
     #        an incompatible set of options.
     def get_queue(queue_name, options={})
       @queues.fetch(queue_name) do |queue_name|
@@ -184,14 +138,14 @@ module Messenger
     #         messages when they have been processed.  Defaults to
     #         +true+.
     # @yield handler [metadata, payload] a block that handles the incoming message
-    # @return [Messenger::Queue] the queue that has been subscribed
+    # @return [Agni::Queue] the queue that has been subscribed
     def subscribe(queue_name, options={}, &handler)
       if queue_name.nil? || queue_name.empty?
         raise ArgumentError, 'Queue name must be present when subscribing'
       end
       queue = get_queue(queue_name)
       if queue.subscribed?
-        raise MessengerError, "Queue #{queue_name} is already subscribed!"
+        raise AgniError, "Queue #{queue_name} is already subscribed!"
       end
       queue.subscribe(handler, options)
       # spin_until { queue.subscribed?  }
@@ -201,7 +155,7 @@ module Messenger
     # given name.
     #
     # @raise ArgumentError if the queue name is empty
-    # @raise MessengerError if the queue does not exist
+    # @raise AgniError if the queue does not exist
     def unsubscribe(queue_name)
       if queue_name.nil? || queue_name.empty?
         raise ArgumentError, 'Queue name must be present when unsubscribing'

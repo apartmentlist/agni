@@ -1,3 +1,3 @@
-module Messenger
+module Agni
   VERSION = "0.0.3"
 end

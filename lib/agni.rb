@@ -1,12 +1,12 @@
 require 'log_mixin'
 require 'amqp'
 require 'algorithms'
-require 'messenger/version'
-require 'messenger/queue'
-require 'messenger/messenger'
-require 'messenger/messenger_error'
+require 'agni/version'
+require 'agni/queue'
+require 'agni/messenger'
+require 'agni/agni_error'
 
-module Messenger
+module Agni
   # Enforce durability-by-default at the queue and message level
   DEFAULT_QUEUE_OPTS = {durable: true}.freeze
   DEFAULT_MESSAGE_OPTS = {persistent: true}.freeze

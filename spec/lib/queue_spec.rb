@@ -1,8 +1,8 @@
-require 'messenger'
+require 'agni'
 require 'pry'
 require 'spec_helper'
 
-describe Messenger::Queue do
+describe Agni::Queue do
 
   let (:channel) { mock('channel') }
   let (:connection) { mock('connection') }
@@ -19,13 +19,13 @@ describe Messenger::Queue do
   let (:queue) do
     AMQP::Channel.stubs(:new).returns(channel)
     channel.stubs(:default_exchange).returns(exchange)
-    channel.expects(:queue).times(Messenger::PRIORITY_LEVELS.size)
-    Messenger::Queue.new(queue_name, messenger)
+    channel.expects(:queue).times(Agni::PRIORITY_LEVELS.size)
+    Agni::Queue.new(queue_name, messenger)
   end
 
   describe :initialize do
     it 'should raise an exeception if a the queue name is nil' do
-      lambda { Messenger::Queue.new(nil, messenger) }.should raise_exception(ArgumentError)
+      lambda { Agni::Queue.new(nil, messenger) }.should raise_exception(ArgumentError)
     end
 
     it 'should construct an AMQP queue for each priority level' do
@@ -36,7 +36,7 @@ describe Messenger::Queue do
   describe :subscribe do
     it 'should raise an exception if the queue is already subscribed' do
       queue.expects(:subscribed?).returns(true)
-      lambda { queue.subscribe(nil) }.should raise_exception(Messenger::MessengerError)
+      lambda { queue.subscribe(nil) }.should raise_exception(Agni::AgniError)
     end
 
     it 'should invoke subscribe for each queue' do
@@ -58,7 +58,7 @@ describe Messenger::Queue do
   describe :unsubscribe do
     it 'should raise an exception if the queue is not subscribed' do
       queue.expects(:subscribed?).returns(false)
-      lambda { queue.unsubscribe }.should raise_exception(Messenger::MessengerError)
+      lambda { queue.unsubscribe }.should raise_exception(Agni::AgniError)
     end
   end
 

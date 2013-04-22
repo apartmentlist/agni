@@ -1,4 +1,4 @@
-module Messenger
+module Agni
   class Queue
     include LogMixin
 
@@ -6,7 +6,7 @@ module Messenger
     # nil values and empty strings.
     #
     # @param queue_name [String] the name of this queue
-    # @param messenger [Messenger::Messenger] the messenger object
+    # @param messenger [Agni::Messenger] the messenger object
     #   with which this queue is associated
     # @param options [Hash] options that will be passed to the AMQP
     #   gem during queue creation
@@ -22,7 +22,7 @@ module Messenger
           create_queue(messenger, priority, options)
         end
       rescue AMQP::IncompatibleOptionsError
-        raise MessengerError,
+        raise AgniError,
         "One of the queues needed to create #{@logical_queue_name} " +
           "has already been created with different options!"
       end
@@ -43,7 +43,7 @@ module Messenger
     #   The return value from the handler will be discarded.
     def subscribe(handler, options={})
       if subscribed?
-        raise MessengerError, 'Queue #{queue_name} is already subscribed'
+        raise AgniError, 'Queue #{queue_name} is already subscribed'
       end
       ack = options[:ack].nil? ? true : options[:ack]
       handle_func = lambda do
@@ -66,7 +66,7 @@ module Messenger
 
     def unsubscribe
       unless subscribed?
-        raise MessengerError, 'Queue #{queue_name} is not subscribed'
+        raise AgniError, 'Queue #{queue_name} is not subscribed'
       end
       @queues.each do |q|
         q[:queue].unsubscribe
@@ -97,7 +97,7 @@ module Messenger
     #
     # @param base_name [String] the base name of the queue.  This is
     #   typcially just the queue name used when creating this
-    #   +Messenger::Queue+ object.
+    #   +Agni::Queue+ object.
     # @param priority [String] valid priorities are in the range 0
     #   through 9 inclusive.
     def create_queue_name(base_name, priority)
@@ -109,13 +109,13 @@ module Messenger
     # Internal use utility method to create queue hashes.  No checking
     # is performed to ensure that the queue does not already exist,
     # for example.  Its only use right now is during initialization of
-    # the Messenger::Queue class.
+    # the Agni::Queue class.
     def create_queue(messenger, priority, options)
       name = create_queue_name(@logical_queue_name, priority)
       unless channel = AMQP::Channel.new(messenger.connection,
                                          DEFAULT_CHANNEL_OPTS.
                                          merge({prefetch: DEFAULT_PREFETCH}))
-        raise MessengerError,
+        raise AgniError,
         "Unable to obtain a channel from AMQP instance at #{amqp_url}"
       end
       # Get a handle to the default exchange. The default exchange
