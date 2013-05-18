@@ -70,11 +70,20 @@ queues to schedule work, report status, update data, and collect
 metrics.  Agni should, even in its current humble state, support
 such a use case.
 
+## Pre-installation of RabbitMQ
+
+For Mac, you can use Homebrew via
+	`brew install rabbitmq`
+
+Starting the server is as easy as 
+	`rabbitmq-server`
+which should start an AMQP server on port 5672 by default.
+
 ## Installation
 
 Add this line to your application's Gemfile:
 
-    gem 'messenger'
+    gem 'agni'
 
 And then execute:
 
@@ -82,7 +91,7 @@ And then execute:
 
 Or install it yourself as:
 
-    $ gem install messenger
+    $ gem install agni
 
 ## Usage
 
@@ -90,14 +99,14 @@ If you're running an AMQP instance locally for testing, try the following.
 
 Set up a subscriber:
 
-    require 'messenger'
-    m = Agni::Messenger.new('amqp://localhost')
+    require 'agni'
+    m = Agni::Messenger.new('amqp://localhost') # port 5672 if you are using RabbitMQ's default
     m.subscribe('test_queue') {|m,p| printf p}
 
 Set up a publisher (in another Ruby instance, on another machine, etc.):
 
-    require 'messenger'
-    m = Agni::Messenger.new('amqp://localhost')
+    require 'agni'
+    m = Agni::Messenger.new('amqp://localhost') # also port 5672 when using RabbitMQ's default
 
 It's easy to send some messages.  If you don't specify a priority,
 they will default to a priority of 4.
