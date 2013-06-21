@@ -165,6 +165,12 @@ module Agni
       end
     end
 
+    # Safely shuts down this messenger instance and stops the event
+    # machine reactor.
+    def shutdown
+      EM.add_timer(2, lambda { @connection.close {EM.stop}})
+    end
+
     # This method allows a client of the messenger to block on the
     # execution of the EventMachine, so it can run in a context that
     # is dedicated to running for the purpose of receiving messages.
