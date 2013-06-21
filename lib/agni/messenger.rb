@@ -171,6 +171,10 @@ module Agni
       EM.add_timer(2, lambda { @connection.close {EM.stop}})
     end
 
+    def published
+      @queues.values.reduce(0){|a,q| a += q.published}
+    end
+
     # This method allows a client of the messenger to block on the
     # execution of the EventMachine, so it can run in a context that
     # is dedicated to running for the purpose of receiving messages.

@@ -104,6 +104,10 @@ module Agni
       "#{base_name}.#{priority}"
     end
 
+    def published
+      @queues.reduce(0){|a,q| a += q[:channel].publisher_index}
+    end
+
     private
 
     # Internal use utility method to create queue hashes.  No checking
@@ -118,6 +122,10 @@ module Agni
         raise AgniError,
         "Unable to obtain a channel from AMQP instance at #{amqp_url}"
       end
+
+      # Require confirmation on message publish
+      # channel.confirm_select
+
       # Get a handle to the default exchange. The default exchange
       # automatically binds messages with a given routing key to a
       # queue with the same name, eliminating the need to create

@@ -1,5 +1,6 @@
 require 'log_mixin'
 require 'amqp'
+require 'amqp/extensions/rabbitmq'
 require 'algorithms'
 require 'agni/version'
 require 'agni/queue'
@@ -12,6 +13,7 @@ module Agni
   DEFAULT_MESSAGE_OPTS = {persistent: true}.freeze
   DEFAULT_CHANNEL_OPTS = {
     auto_recovery: true,
+
   }.freeze
   DEFAULT_CONNECTION_OPTS = {
     auto_recovery: true,
